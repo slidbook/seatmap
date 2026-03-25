@@ -1,8 +1,19 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, memo } from 'react'
 import type { Seat, SeatStatus } from '@/types'
 import { SeatTooltip } from './SeatTooltip'
+
+// Memoized so React won't re-render (and won't reset SVG fills) when tooltip state changes
+const SvgContainer = memo(function SvgContainer({
+  html,
+  divRef,
+}: {
+  html: string
+  divRef: React.RefObject<HTMLDivElement>
+}) {
+  return <div ref={divRef} className="w-full" dangerouslySetInnerHTML={{ __html: html }} />
+})
 
 export const STATUS_COLOURS: Record<SeatStatus, string> = {
   AVAILABLE: '#22c55e',
@@ -104,11 +115,7 @@ export function SeatMap({ svgContent, initialSeats }: SeatMapProps) {
 
   return (
     <div className="relative p-4">
-      <div
-        ref={containerRef}
-        className="w-full"
-        dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
-      />
+      <SvgContainer html={sanitizedSvg} divRef={containerRef} />
       {tooltip && <SeatTooltip seat={tooltip.seat} x={tooltip.x} y={tooltip.y} />}
     </div>
   )
