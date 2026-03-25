@@ -1,8 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, memo } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import type { Seat, SeatStatus } from '@/types'
 import { SeatTooltip } from './SeatTooltip'
+
+export const STATUS_COLOURS: Record<SeatStatus, string> = {
+  AVAILABLE: '#22c55e',
+  OCCUPIED:  '#ef4444',
+  RESERVED:  '#f59e0b',
+}
 
 // Memoized so React won't re-render (and won't reset SVG fills) when tooltip state changes
 const SvgContainer = memo(function SvgContainer({
@@ -10,16 +16,10 @@ const SvgContainer = memo(function SvgContainer({
   divRef,
 }: {
   html: string
-  divRef: React.RefObject<HTMLDivElement>
+  divRef: React.RefObject<HTMLDivElement | null>
 }) {
   return <div ref={divRef} className="w-full" dangerouslySetInnerHTML={{ __html: html }} />
 })
-
-export const STATUS_COLOURS: Record<SeatStatus, string> = {
-  AVAILABLE: '#22c55e',
-  OCCUPIED:  '#ef4444',
-  RESERVED:  '#f59e0b',
-}
 
 interface TooltipState {
   seat: Seat
@@ -28,24 +28,16 @@ interface TooltipState {
 }
 
 interface SeatMapProps {
-  svgContent: string
-  initialSeats: Seat[]
+  svgContent:    string
+  seats:         Seat[]
+  onSeatClick?:  (seat: Seat) => void
+  moveSourceId?: string   // seat being moved — shown in amber
 }
 
-export function SeatMap({ svgContent, initialSeats }: SeatMapProps) {
+export function SeatMap({ svgContent, seats, onSeatClick, moveSourceId }: SeatMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [sanitizedSvg, setSanitizedSvg] = useState('')
-  const [seats, setSeats] = useState<Seat[]>(initialSeats)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
-
-  // Expose seat refresh so other components can call it later
-  // (used after mutations in Step 7)
-  const refreshSeats = useCallback(async () => {
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
-    const { data } = await supabase.from('seats').select('*').order('label')
-    if (data) setSeats(data as Seat[])
-  }, [])
 
   // Sanitize SVG on mount (client-only)
   useEffect(() => {
@@ -62,7 +54,6 @@ export function SeatMap({ svgContent, initialSeats }: SeatMapProps) {
     if (!sanitizedSvg || !containerRef.current) return
     const container = containerRef.current
 
-    // Make SVG fill its container
     const svgEl = container.querySelector('svg')
     if (svgEl) {
       svgEl.setAttribute('width', '100%')
@@ -74,36 +65,38 @@ export function SeatMap({ svgContent, initialSeats }: SeatMapProps) {
       }
     }
 
-    // Build seat lookup
     const seatMap = new Map(seats.map((s) => [s.svg_rect_id, s]))
-
-    // Colour and wire up each seat rect
     const cleanups: (() => void)[] = []
 
     seatMap.forEach((seat, rectId) => {
       const rect = container.querySelector(`#${rectId}`) as SVGRectElement | null
       if (!rect) return
 
-      rect.setAttribute('fill', STATUS_COLOURS[seat.status])
+      // Highlight the move-source seat in amber regardless of real status
+      const colour = seat.id === moveSourceId ? '#f97316' : STATUS_COLOURS[seat.status]
+      rect.setAttribute('fill', colour)
       rect.style.cursor = 'pointer'
 
-      const onOver = (e: MouseEvent) => setTooltip({ seat, x: e.clientX, y: e.clientY })
-      const onMove = (e: MouseEvent) => setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)
-      const onOut  = () => setTooltip(null)
+      const onOver  = (e: MouseEvent) => setTooltip({ seat, x: e.clientX, y: e.clientY })
+      const onMove  = (e: MouseEvent) => setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)
+      const onOut   = () => setTooltip(null)
+      const onClick = () => onSeatClick?.(seat)
 
       rect.addEventListener('mouseover', onOver)
       rect.addEventListener('mousemove', onMove)
-      rect.addEventListener('mouseout', onOut)
+      rect.addEventListener('mouseout',  onOut)
+      rect.addEventListener('click',     onClick)
 
       cleanups.push(() => {
         rect.removeEventListener('mouseover', onOver)
         rect.removeEventListener('mousemove', onMove)
-        rect.removeEventListener('mouseout', onOut)
+        rect.removeEventListener('mouseout',  onOut)
+        rect.removeEventListener('click',     onClick)
       })
     })
 
     return () => cleanups.forEach((fn) => fn())
-  }, [sanitizedSvg, seats])
+  }, [sanitizedSvg, seats, onSeatClick, moveSourceId])
 
   if (!sanitizedSvg) {
     return (
