@@ -32,8 +32,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
     setStatusFilter((prev) => {
       const next = new Set(prev)
       if (next.has(status)) {
-        // Don't let user deselect all
-        if (next.size === 1) return prev
+        if (next.size === 1) return prev // don't deselect all
         next.delete(status)
       } else {
         next.add(status)
@@ -143,6 +142,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
       </main>
 
       <SeatModal
+        key={selectedSeat?.id}
         seat={selectedSeat}
         teams={teams}
         onClose={() => setSelectedSeat(null)}
