@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { SeatMap } from './SeatMap'
 import { SeatModal } from './SeatModal'
 import { NavBar } from './NavBar'
-import type { Seat, Floor } from '@/types'
+import type { Seat, Floor, SeatStatus } from '@/types'
 import { moveSeat } from '@/app/actions/seats'
 import { createClient } from '@/lib/supabase/client'
+
+const ALL_STATUSES = new Set<SeatStatus>(['AVAILABLE', 'OCCUPIED', 'RESERVED'])
 
 interface MapClientProps {
   floor:        Floor
@@ -21,6 +23,52 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
   const [movingFrom,   setMovingFrom]   = useState<Seat | null>(null)
   const [moveError,    setMoveError]    = useState<string | null>(null)
 
+  // ── Filter state ────────────────────────────────────────────────────────────
+  const [searchQuery,  setSearchQuery]  = useState('')
+  const [statusFilter, setStatusFilter] = useState<Set<SeatStatus>>(new Set(ALL_STATUSES))
+  const [teamFilter,   setTeamFilter]   = useState<string | null>(null)
+
+  const handleStatusToggle = useCallback((status: SeatStatus) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(status)) {
+        // Don't let user deselect all
+        if (next.size === 1) return prev
+        next.delete(status)
+      } else {
+        next.add(status)
+      }
+      return next
+    })
+  }, [])
+
+  // Compute the set of seat IDs that are "active" (highlighted) given current filters.
+  // null means no filter active — all seats show at full brightness.
+  const activeIds = useMemo<Set<string> | null>(() => {
+    const query    = searchQuery.trim().toLowerCase()
+    const hasSearch = query.length > 0
+    const hasTeam   = teamFilter !== null
+    const hasStatus = statusFilter.size < ALL_STATUSES.size
+
+    if (!hasSearch && !hasTeam && !hasStatus) return null
+
+    return new Set(
+      seats
+        .filter((seat) => {
+          if (!statusFilter.has(seat.status)) return false
+          if (hasTeam && seat.occupant_team !== teamFilter) return false
+          if (hasSearch) {
+            const inLabel = seat.label.toLowerCase().includes(query)
+            const inName  = seat.occupant_name?.toLowerCase().includes(query) ?? false
+            if (!inLabel && !inName) return false
+          }
+          return true
+        })
+        .map((s) => s.id)
+    )
+  }, [seats, searchQuery, statusFilter, teamFilter])
+
+  // ── Seat interactions ────────────────────────────────────────────────────────
   const refreshSeats = useCallback(async () => {
     const supabase = createClient()
     const { data } = await supabase.from('seats').select('*').order('label')
@@ -29,12 +77,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
 
   const handleSeatClick = useCallback((seat: Seat) => {
     if (movingFrom) {
-      // We're in move mode — this click is the destination
-      if (seat.id === movingFrom.id) {
-        // Clicked the source seat again — cancel
-        setMovingFrom(null)
-        return
-      }
+      if (seat.id === movingFrom.id) { setMovingFrom(null); return }
 
       if (seat.status === 'OCCUPIED') {
         const ok = window.confirm(
@@ -60,7 +103,17 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
 
   return (
     <>
-      <NavBar seats={seats} userEmail={userEmail} />
+      <NavBar
+        seats={seats}
+        userEmail={userEmail}
+        teams={teams}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        statusFilter={statusFilter}
+        onStatusToggle={handleStatusToggle}
+        teamFilter={teamFilter}
+        onTeamFilterChange={setTeamFilter}
+      />
 
       {movingFrom && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center justify-between">
@@ -85,6 +138,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
           seats={seats}
           onSeatClick={handleSeatClick}
           moveSourceId={movingFrom?.id}
+          activeIds={activeIds}
         />
       </main>
 

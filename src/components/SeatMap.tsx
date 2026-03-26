@@ -31,10 +31,11 @@ interface SeatMapProps {
   svgContent:    string
   seats:         Seat[]
   onSeatClick?:  (seat: Seat) => void
-  moveSourceId?: string   // seat being moved — shown in amber
+  moveSourceId?: string          // seat being moved — shown in amber
+  activeIds?:    Set<string> | null  // when set, dim seats not in the set
 }
 
-export function SeatMap({ svgContent, seats, onSeatClick, moveSourceId }: SeatMapProps) {
+export function SeatMap({ svgContent, seats, onSeatClick, moveSourceId, activeIds }: SeatMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [sanitizedSvg, setSanitizedSvg] = useState('')
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
@@ -72,9 +73,15 @@ export function SeatMap({ svgContent, seats, onSeatClick, moveSourceId }: SeatMa
       const rect = container.querySelector(`#${rectId}`) as SVGRectElement | null
       if (!rect) return
 
-      // Highlight the move-source seat in amber regardless of real status
-      const colour = seat.id === moveSourceId ? '#f97316' : STATUS_COLOURS[seat.status]
+      // Dim seats that don't match the active filter
+      const isActive = !activeIds || activeIds.has(seat.id)
+      const colour = seat.id === moveSourceId
+        ? '#f97316'
+        : isActive
+          ? STATUS_COLOURS[seat.status]
+          : '#d1d5db'
       rect.setAttribute('fill', colour)
+      rect.style.opacity = isActive ? '1' : '0.4'
       rect.style.cursor = 'pointer'
 
       const onOver  = (e: MouseEvent) => setTooltip({ seat, x: e.clientX, y: e.clientY })
@@ -96,7 +103,7 @@ export function SeatMap({ svgContent, seats, onSeatClick, moveSourceId }: SeatMa
     })
 
     return () => cleanups.forEach((fn) => fn())
-  }, [sanitizedSvg, seats, onSeatClick, moveSourceId])
+  }, [sanitizedSvg, seats, onSeatClick, moveSourceId, activeIds])
 
   if (!sanitizedSvg) {
     return (
