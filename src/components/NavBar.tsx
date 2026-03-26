@@ -105,7 +105,7 @@ export function NavBar({
         value={statusFilter ?? '__all__'}
         onValueChange={(v) => onStatusChange(v === '__all__' ? null : v as SeatStatus)}
       >
-        <SelectTrigger className="h-9 text-sm w-[140px]">
+        <SelectTrigger className="!h-9 text-sm w-[140px]">
           <span className="flex flex-1 text-left text-sm">
             {statusFilter === null      ? 'Show all'  :
              statusFilter === 'OCCUPIED'  ? 'Occupied'  :
