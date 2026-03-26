@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Card,
   CardContent,
@@ -12,6 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldDescription,
+  FieldError,
+} from '@/components/ui/field'
 import { cn } from '@/lib/utils'
 
 export default function LoginPage() {
@@ -81,14 +87,14 @@ function LoginCard({
         <CardHeader>
           <CardTitle>Sign in to SeatMap</CardTitle>
           <CardDescription>
-            Enter your work email and we&apos;ll send you a login link.
+            Enter your work email and we&apos;ll send you a magic link.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
                   id="email"
                   type="email"
@@ -98,12 +104,14 @@ function LoginCard({
                   required
                   autoFocus
                 />
-              </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Sending…' : 'Send login link'}
-              </Button>
-            </div>
+                {error && <FieldError>{error}</FieldError>}
+              </Field>
+              <Field>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Sending…' : 'Send login link'}
+                </Button>
+              </Field>
+            </FieldGroup>
           </form>
         </CardContent>
       </Card>
@@ -122,9 +130,9 @@ function CheckEmailCard({ email, className }: { email: string; className?: strin
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <FieldDescription>
             Didn&apos;t get it? Check your spam folder, or go back and try again.
-          </p>
+          </FieldDescription>
         </CardContent>
       </Card>
     </div>
