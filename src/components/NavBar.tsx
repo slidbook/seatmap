@@ -4,18 +4,14 @@ import type { Seat, SeatStatus } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import {
   Combobox, ComboboxInput, ComboboxContent,
   ComboboxList, ComboboxItem, ComboboxEmpty,
 } from '@/components/ui/combobox'
 import { Search, X } from 'lucide-react'
-
-const STATUS_OPTIONS: { value: SeatStatus; label: string }[] = [
-  { value: 'OCCUPIED',  label: 'Occupied'  },
-  { value: 'AVAILABLE', label: 'Available' },
-  { value: 'RESERVED',  label: 'Reserved'  },
-]
 
 const STAT_COLOURS: Record<SeatStatus, string> = {
   OCCUPIED:  '#ef4444',
@@ -29,8 +25,8 @@ interface NavBarProps {
   teams:              string[]
   searchQuery:        string
   onSearchChange:     (q: string) => void
-  statusFilter:       Set<SeatStatus>
-  onStatusToggle:     (status: SeatStatus) => void
+  statusFilter:       SeatStatus | null   // null = show all
+  onStatusChange:     (status: SeatStatus | null) => void
   teamFilter:         string | null
   onTeamFilterChange: (team: string | null) => void
 }
@@ -38,15 +34,15 @@ interface NavBarProps {
 export function NavBar({
   seats, userEmail, teams,
   searchQuery, onSearchChange,
-  statusFilter, onStatusToggle,
+  statusFilter, onStatusChange,
   teamFilter, onTeamFilterChange,
 }: NavBarProps) {
   const router = useRouter()
 
-  const visible   = seats.filter((s) => statusFilter.has(s.status))
-  const occupied  = visible.filter((s) => s.status === 'OCCUPIED').length
-  const available = visible.filter((s) => s.status === 'AVAILABLE').length
-  const reserved  = visible.filter((s) => s.status === 'RESERVED').length
+  const filtered  = statusFilter ? seats.filter((s) => s.status === statusFilter) : seats
+  const occupied  = filtered.filter((s) => s.status === 'OCCUPIED').length
+  const available = filtered.filter((s) => s.status === 'AVAILABLE').length
+  const reserved  = filtered.filter((s) => s.status === 'RESERVED').length
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -79,20 +75,6 @@ export function NavBar({
         )}
       </div>
 
-      {/* Status filter — ToggleGroup outline */}
-      <ToggleGroup variant="outline">
-        {STATUS_OPTIONS.map(({ value, label }) => (
-          <ToggleGroupItem
-            key={value}
-            pressed={statusFilter.has(value)}
-            onPressedChange={() => onStatusToggle(value)}
-            className="text-sm h-9 px-3"
-          >
-            {label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
-
       {/* Team filter — Combobox */}
       {teams.length > 0 && (
         <div className="w-[180px]">
@@ -117,6 +99,22 @@ export function NavBar({
           </Combobox>
         </div>
       )}
+
+      {/* Status filter — Select */}
+      <Select
+        value={statusFilter ?? '__all__'}
+        onValueChange={(v) => onStatusChange(v === '__all__' ? null : v as SeatStatus)}
+      >
+        <SelectTrigger className="h-9 text-sm w-[140px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">Show all</SelectItem>
+          <SelectItem value="OCCUPIED">Occupied</SelectItem>
+          <SelectItem value="AVAILABLE">Available</SelectItem>
+          <SelectItem value="RESERVED">Reserved</SelectItem>
+        </SelectContent>
+      </Select>
 
       <div className="flex-1" />
 

@@ -8,7 +8,6 @@ import type { Seat, Floor, SeatStatus } from '@/types'
 import { moveSeat } from '@/app/actions/seats'
 import { createClient } from '@/lib/supabase/client'
 
-const ALL_STATUSES = new Set<SeatStatus>(['AVAILABLE', 'OCCUPIED', 'RESERVED'])
 
 interface MapClientProps {
   floor:        Floor
@@ -25,36 +24,23 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
 
   // ── Filter state ────────────────────────────────────────────────────────────
   const [searchQuery,  setSearchQuery]  = useState('')
-  const [statusFilter, setStatusFilter] = useState<Set<SeatStatus>>(new Set(ALL_STATUSES))
+  const [statusFilter, setStatusFilter] = useState<SeatStatus | null>(null)
   const [teamFilter,   setTeamFilter]   = useState<string | null>(null)
-
-  const handleStatusToggle = useCallback((status: SeatStatus) => {
-    setStatusFilter((prev) => {
-      const next = new Set(prev)
-      if (next.has(status)) {
-        if (next.size === 1) return prev // don't deselect all
-        next.delete(status)
-      } else {
-        next.add(status)
-      }
-      return next
-    })
-  }, [])
 
   // Compute the set of seat IDs that are "active" (highlighted) given current filters.
   // null means no filter active — all seats show at full brightness.
   const activeIds = useMemo<Set<string> | null>(() => {
-    const query    = searchQuery.trim().toLowerCase()
+    const query     = searchQuery.trim().toLowerCase()
     const hasSearch = query.length > 0
     const hasTeam   = teamFilter !== null
-    const hasStatus = statusFilter.size < ALL_STATUSES.size
+    const hasStatus = statusFilter !== null
 
     if (!hasSearch && !hasTeam && !hasStatus) return null
 
     return new Set(
       seats
         .filter((seat) => {
-          if (!statusFilter.has(seat.status)) return false
+          if (hasStatus && seat.status !== statusFilter) return false
           if (hasTeam && seat.occupant_team !== teamFilter) return false
           if (hasSearch) {
             const inLabel = seat.label.toLowerCase().includes(query)
@@ -109,7 +95,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         statusFilter={statusFilter}
-        onStatusToggle={handleStatusToggle}
+        onStatusChange={setStatusFilter}
         teamFilter={teamFilter}
         onTeamFilterChange={setTeamFilter}
       />
