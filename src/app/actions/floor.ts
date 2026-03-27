@@ -135,18 +135,6 @@ export async function restoreSnapshot(snapshotId: string): Promise<void> {
   const seats = snap.seat_data as Array<Record<string, unknown>>
   if (!Array.isArray(seats)) throw new Error('Snapshot seat data is invalid')
 
-  // Save the current state as a new snapshot before overwriting
-  const { data: current } = await db.from('floors').select('svg_content').eq('id', snap.floor_id).single()
-  const { data: currentSeats } = await db.from('seats').select('*').eq('floor_id', snap.floor_id)
-
-  if (current && currentSeats) {
-    await db.from('floor_snapshots').insert({
-      floor_id:    snap.floor_id,
-      svg_content: current.svg_content,
-      seat_data:   currentSeats,
-    })
-  }
-
   // Restore the SVG
   const { error: floorErr } = await db
     .from('floors')
