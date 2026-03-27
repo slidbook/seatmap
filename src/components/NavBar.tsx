@@ -134,6 +134,11 @@ export function NavBar({
         Audit log
       </a>
 
+      {/* Floor plan admin */}
+      <a href="/admin" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+        Floor plan
+      </a>
+
       {/* User + sign out */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="hidden sm:inline">{userEmail}</span>
