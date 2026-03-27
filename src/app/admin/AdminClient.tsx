@@ -6,7 +6,9 @@ import {
   flexRender, type ColumnDef, type SortingState,
 } from '@tanstack/react-table'
 import { uploadFloor, restoreSnapshot, listSnapshots } from '@/app/actions/floor'
+import { addAdminAction, removeAdminAction, transferOwnershipAction, listAdminsAction } from '@/app/actions/admins'
 import type { UploadResult, Snapshot } from '@/app/actions/floor'
+import type { AdminRecord, AdminRole } from '@/lib/admins'
 import type { AuditLog } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -91,18 +93,78 @@ const columns: ColumnDef<AuditLog>[] = [
 interface Props {
   initialSnapshots: Snapshot[]
   initialLogs: AuditLog[]
+  initialAdmins: AdminRecord[]
+  userEmail: string
+  userRole: AdminRole
 }
 
-export function AdminClient({ initialSnapshots, initialLogs }: Props) {
-  const fileRef                         = useRef<HTMLInputElement>(null)
-  const [snapshots, setSnapshots]       = useState<Snapshot[]>(initialSnapshots)
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
-  const [uploadError, setUploadError]   = useState<string | null>(null)
-  const [confirmId, setConfirmId]       = useState<string | null>(null)
-  const [restoreMsg, setRestoreMsg]     = useState<string | null>(null)
-  const [isPending, startTransition]    = useTransition()
-  const [globalFilter, setGlobalFilter] = useState('')
-  const [sorting, setSorting]           = useState<SortingState>([{ id: 'created_at', desc: true }])
+export function AdminClient({ initialSnapshots, initialLogs, initialAdmins, userEmail, userRole }: Props) {
+  const fileRef                           = useRef<HTMLInputElement>(null)
+  const [snapshots, setSnapshots]         = useState<Snapshot[]>(initialSnapshots)
+  const [uploadResult, setUploadResult]   = useState<UploadResult | null>(null)
+  const [uploadError, setUploadError]     = useState<string | null>(null)
+  const [confirmId, setConfirmId]         = useState<string | null>(null)
+  const [restoreMsg, setRestoreMsg]       = useState<string | null>(null)
+  const [isPending, startTransition]      = useTransition()
+  const [globalFilter, setGlobalFilter]   = useState('')
+  const [sorting, setSorting]             = useState<SortingState>([{ id: 'created_at', desc: true }])
+
+  // ── Admins state ──
+  const [admins, setAdmins]               = useState<AdminRecord[]>(initialAdmins)
+  const [newAdminEmail, setNewAdminEmail] = useState('')
+  const [adminError, setAdminError]       = useState<string | null>(null)
+  const [adminMsg, setAdminMsg]           = useState<string | null>(null)
+  const [transferEmail, setTransferEmail] = useState('')
+  const [transferConfirm, setTransferConfirm] = useState(false)
+  const [transferError, setTransferError] = useState<string | null>(null)
+
+  async function refreshAdmins() {
+    setAdmins(await listAdminsAction())
+  }
+
+  function handleAddAdmin(e: React.FormEvent) {
+    e.preventDefault()
+    setAdminError(null)
+    setAdminMsg(null)
+    startTransition(async () => {
+      try {
+        await addAdminAction(newAdminEmail.trim())
+        setNewAdminEmail('')
+        setAdminMsg(`${newAdminEmail.trim()} added as admin.`)
+        await refreshAdmins()
+      } catch (err) {
+        setAdminError(err instanceof Error ? err.message : 'Failed to add admin.')
+      }
+    })
+  }
+
+  function handleRemoveAdmin(email: string) {
+    setAdminError(null)
+    setAdminMsg(null)
+    startTransition(async () => {
+      try {
+        await removeAdminAction(email)
+        setAdminMsg(`${email} removed.`)
+        await refreshAdmins()
+      } catch (err) {
+        setAdminError(err instanceof Error ? err.message : 'Failed to remove admin.')
+      }
+    })
+  }
+
+  function handleTransferConfirm() {
+    setTransferError(null)
+    startTransition(async () => {
+      try {
+        await transferOwnershipAction(transferEmail.trim())
+        // Page will reload and user will now see admin (non-owner) view
+        window.location.reload()
+      } catch (err) {
+        setTransferError(err instanceof Error ? err.message : 'Transfer failed.')
+        setTransferConfirm(false)
+      }
+    })
+  }
 
   const table = useReactTable({
     data: initialLogs,
@@ -305,6 +367,130 @@ export function AdminClient({ initialSnapshots, initialLogs }: Props) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Admins (owner only) ── */}
+      {userRole === 'owner' && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Admins</CardTitle>
+              <CardDescription>
+                Admins can access this page. Only you (the owner) can add or remove them.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {admins
+                      .slice()
+                      .sort((a, b) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : a.email.localeCompare(b.email)))
+                      .map(admin => (
+                        <TableRow key={admin.email}>
+                          <TableCell className="text-sm">{admin.email}</TableCell>
+                          <TableCell>
+                            <Badge variant={admin.role === 'owner' ? 'default' : 'secondary'}>
+                              {admin.role === 'owner' ? 'Owner' : 'Admin'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {admin.role !== 'owner' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={isPending}
+                                onClick={() => handleRemoveAdmin(admin.email)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <form onSubmit={handleAddAdmin} className="flex gap-2 max-w-sm">
+                <Input
+                  type="email"
+                  placeholder="colleague@open.gov.sg"
+                  value={newAdminEmail}
+                  onChange={e => setNewAdminEmail(e.target.value)}
+                  required
+                  disabled={isPending}
+                />
+                <Button type="submit" disabled={isPending || !newAdminEmail.trim()}>
+                  Add admin
+                </Button>
+              </form>
+
+              {adminError && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  {adminError}
+                </div>
+              )}
+              {adminMsg && <p className="text-sm text-muted-foreground">{adminMsg}</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Transfer ownership</CardTitle>
+              <CardDescription>
+                Transfer your owner role to another admin. You will be demoted to admin.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {!transferConfirm ? (
+                <form
+                  onSubmit={e => { e.preventDefault(); setTransferConfirm(true); setTransferError(null) }}
+                  className="flex gap-2 max-w-sm"
+                >
+                  <Input
+                    type="email"
+                    placeholder="new-owner@open.gov.sg"
+                    value={transferEmail}
+                    onChange={e => setTransferEmail(e.target.value)}
+                    required
+                    disabled={isPending}
+                  />
+                  <Button type="submit" variant="outline" disabled={isPending || !transferEmail.trim()}>
+                    Transfer
+                  </Button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">
+                    Transfer ownership to <strong>{transferEmail}</strong>? You will become a regular admin.
+                  </span>
+                  <Button size="sm" variant="destructive" disabled={isPending} onClick={handleTransferConfirm}>
+                    {isPending ? 'Transferring…' : 'Yes, transfer'}
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={isPending} onClick={() => setTransferConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+              {transferError && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  {transferError}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
     </div>
   )

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSnapshots } from '@/app/actions/floor'
+import { isAdmin, listAdmins } from '@/lib/admins'
 import { AdminClient } from './AdminClient'
 import type { AuditLog } from '@/types'
 
@@ -10,16 +11,22 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const email = user.email ?? ''
+  if (!(await isAdmin(email))) redirect('/map')
+
   const db = createAdminClient()
 
-  const [snapshots, { data: logs }] = await Promise.all([
+  const [snapshots, { data: logs }, admins] = await Promise.all([
     listSnapshots(),
     db
       .from('audit_logs')
       .select('*, seat:seats(label)')
       .order('created_at', { ascending: false })
       .limit(200),
+    listAdmins(),
   ])
+
+  const userRole = admins.find(a => a.email === email)?.role ?? 'admin'
 
   return (
     <div className="min-h-svh bg-background">
@@ -33,6 +40,9 @@ export default async function AdminPage() {
         <AdminClient
           initialSnapshots={snapshots}
           initialLogs={(logs ?? []) as AuditLog[]}
+          initialAdmins={admins}
+          userEmail={email}
+          userRole={userRole}
         />
       </main>
     </div>
