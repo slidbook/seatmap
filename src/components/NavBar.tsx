@@ -11,7 +11,11 @@ import {
   Combobox, ComboboxInput, ComboboxContent,
   ComboboxList, ComboboxItem,
 } from '@/components/ui/combobox'
-import { Search, X } from 'lucide-react'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Search, X, ChevronDown } from 'lucide-react'
 
 const STAT_COLOURS: Record<SeatStatus, string> = {
   OCCUPIED:  '#848f99',
@@ -129,23 +133,21 @@ export function NavBar({
         <StatPill colour={STAT_COLOURS.RESERVED}  count={reserved}  />
       </div>
 
-      {/* Audit log */}
-      <a href="/audit" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-        Audit log
-      </a>
-
-      {/* Floor plan admin */}
-      <a href="/admin" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-        Floor plan
-      </a>
-
-      {/* User + sign out */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="hidden sm:inline">{userEmail}</span>
-        <button onClick={handleSignOut} className="hover:text-foreground transition-colors">
-          Sign out
-        </button>
-      </div>
+      {/* User menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors outline-none">
+          <span className="hidden sm:inline">{userEmail}</span>
+          <ChevronDown className="size-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <div className="px-2 py-1.5 text-xs text-muted-foreground truncate">{userEmail}</div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => router.push('/audit')}>Audit log</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push('/admin')}>Admin</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleSignOut}>Log out</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   )
 }
