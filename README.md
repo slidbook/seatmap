@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SeatMap
 
-## Getting Started
+An office seat management tool. View the floor plan, assign people to seats, reserve seats, and track changes via an audit log.
 
-First, run the development server:
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). You'll be redirected to the login page — enter your work email to receive a magic link.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Updating the floor plan
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+When you get a new SVG from the designer, use the safe update script rather than re-seeding. It preserves all existing seat assignments and only changes what's different.
 
-## Learn More
+### One-time setup
 
-To learn more about Next.js, take a look at the following resources:
+Run this SQL in the Supabase SQL editor (only needed once):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+supabase/add-floor-snapshots.sql
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### How to update
 
-## Deploy on Vercel
+1. Replace `floor-plan.svg` in the project root with the new file
+2. Run the update script:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run update-floor
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The script will:
+- Save a snapshot of the current state before making any changes
+- Keep all existing seat assignments untouched
+- Add any new seats from the SVG as Available
+- Warn you about any seats that are no longer in the new SVG (but won't delete them)
+
+### Rolling back
+
+If something looks wrong after an update, you can restore any previous version:
+
+```bash
+# See all saved snapshots
+npm run list-snapshots
+
+# Restore a specific snapshot by ID
+npm run restore-snapshot <snapshot-id>
+```
+
+Restoring rolls back both the SVG and all seat data (assignments, reservations, notes) to exactly the state they were in when the snapshot was taken.
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start the development server |
+| `npm run seed` | First-time setup: parse SVG and populate the database |
+| `npm run update-floor` | Safely update the floor plan SVG without losing seat data |
+| `npm run list-snapshots` | List all saved floor plan snapshots |
+| `npm run restore-snapshot <id>` | Roll back to a previous snapshot |
