@@ -5,43 +5,55 @@ import { SeatMap } from './SeatMap'
 import { SeatModal } from './SeatModal'
 import { NavBar } from './NavBar'
 import type { Seat, Floor, SeatStatus } from '@/types'
-import { moveSeat } from '@/app/actions/seats'
+import { moveSeat, restoreSeat } from '@/app/actions/seats'
 import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+
+function toastTimestamp() {
+  return new Date().toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: '2-digit',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
 
 
 interface MapClientProps {
   floor:        Floor
   initialSeats: Seat[]
   teams:        string[]
+  divisions:    string[]
   userEmail:    string
 }
 
-export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientProps) {
+export function MapClient({ floor, initialSeats, teams, divisions, userEmail }: MapClientProps) {
   const [seats,        setSeats]        = useState<Seat[]>(initialSeats)
   const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null)
   const [movingFrom,   setMovingFrom]   = useState<Seat | null>(null)
   const [moveError,    setMoveError]    = useState<string | null>(null)
 
   // ── Filter state ────────────────────────────────────────────────────────────
-  const [searchQuery,  setSearchQuery]  = useState('')
-  const [statusFilter, setStatusFilter] = useState<SeatStatus | null>(null)
-  const [teamFilter,   setTeamFilter]   = useState<string | null>(null)
+  const [searchQuery,     setSearchQuery]     = useState('')
+  const [statusFilter,    setStatusFilter]    = useState<SeatStatus | null>(null)
+  const [teamFilter,      setTeamFilter]      = useState<string | null>(null)
+  const [divisionFilter,  setDivisionFilter]  = useState<string | null>(null)
 
   // Compute the set of seat IDs that are "active" (highlighted) given current filters.
   // null means no filter active — all seats show at full brightness.
   const activeIds = useMemo<Set<string> | null>(() => {
-    const query     = searchQuery.trim().toLowerCase()
-    const hasSearch = query.length > 0
-    const hasTeam   = teamFilter !== null
-    const hasStatus = statusFilter !== null
+    const query       = searchQuery.trim().toLowerCase()
+    const hasSearch   = query.length > 0
+    const hasTeam     = teamFilter !== null
+    const hasStatus   = statusFilter !== null
+    const hasDivision = divisionFilter !== null
 
-    if (!hasSearch && !hasTeam && !hasStatus) return null
+    if (!hasSearch && !hasTeam && !hasStatus && !hasDivision) return null
 
     return new Set(
       seats
         .filter((seat) => {
-          if (hasStatus && seat.status !== statusFilter) return false
-          if (hasTeam && seat.occupant_team !== teamFilter) return false
+          if (hasStatus   && seat.status             !== statusFilter)   return false
+          if (hasTeam     && seat.occupant_team      !== teamFilter)     return false
+          if (hasDivision && seat.occupant_division  !== divisionFilter) return false
           if (hasSearch) {
             const inLabel = seat.label.toLowerCase().includes(query)
             const inName  = seat.occupant_name?.toLowerCase().includes(query) ?? false
@@ -51,7 +63,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
         })
         .map((s) => s.id)
     )
-  }, [seats, searchQuery, statusFilter, teamFilter])
+  }, [seats, searchQuery, statusFilter, teamFilter, divisionFilter])
 
   // ── Seat interactions ────────────────────────────────────────────────────────
   const refreshSeats = useCallback(async () => {
@@ -71,8 +83,27 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
         if (!ok) return
       }
 
-      moveSeat(movingFrom.id, seat.id)
-        .then(() => refreshSeats())
+      const fromSnapshot = { status: movingFrom.status, occupant_name: movingFrom.occupant_name, occupant_team: movingFrom.occupant_team, occupant_division: movingFrom.occupant_division, notes: movingFrom.notes, label: movingFrom.label }
+      const toSnapshot = { status: seat.status, occupant_name: seat.occupant_name, occupant_team: seat.occupant_team, occupant_division: seat.occupant_division, notes: seat.notes, label: seat.label }
+      const fromId = movingFrom.id
+      const toId = seat.id
+
+      moveSeat(fromId, toId)
+        .then((result) => {
+          refreshSeats()
+          const message = result.isSwap ? 'Seats have been swapped.' : 'Seat has been moved.'
+          toast(message, {
+            description: toastTimestamp(),
+            action: {
+              label: 'Undo',
+              onClick: async () => {
+                await restoreSeat(fromId, fromSnapshot)
+                await restoreSeat(toId, toSnapshot)
+                await refreshSeats()
+              },
+            },
+          })
+        })
         .catch((e) => setMoveError(e.message))
         .finally(() => setMovingFrom(null))
       return
@@ -92,12 +123,15 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
         seats={seats}
         userEmail={userEmail}
         teams={teams}
+        divisions={divisions}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
         teamFilter={teamFilter}
         onTeamFilterChange={setTeamFilter}
+        divisionFilter={divisionFilter}
+        onDivisionFilterChange={setDivisionFilter}
       />
 
       {movingFrom && (
@@ -131,6 +165,7 @@ export function MapClient({ floor, initialSeats, teams, userEmail }: MapClientPr
         key={selectedSeat?.id}
         seat={selectedSeat}
         teams={teams}
+        divisions={divisions}
         onClose={() => setSelectedSeat(null)}
         onUpdated={refreshSeats}
         onMoveStart={handleMoveStart}

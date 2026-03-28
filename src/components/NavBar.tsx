@@ -24,22 +24,26 @@ const STAT_COLOURS: Record<SeatStatus, string> = {
 }
 
 interface NavBarProps {
-  seats:              Seat[]
-  userEmail:          string
-  teams:              string[]
-  searchQuery:        string
-  onSearchChange:     (q: string) => void
-  statusFilter:       SeatStatus | null   // null = show all
-  onStatusChange:     (status: SeatStatus | null) => void
-  teamFilter:         string | null
-  onTeamFilterChange: (team: string | null) => void
+  seats:                  Seat[]
+  userEmail:              string
+  teams:                  string[]
+  divisions:              string[]
+  searchQuery:            string
+  onSearchChange:         (q: string) => void
+  statusFilter:           SeatStatus | null
+  onStatusChange:         (status: SeatStatus | null) => void
+  teamFilter:             string | null
+  onTeamFilterChange:     (team: string | null) => void
+  divisionFilter:         string | null
+  onDivisionFilterChange: (division: string | null) => void
 }
 
 export function NavBar({
-  seats, userEmail, teams,
+  seats, userEmail, teams, divisions,
   searchQuery, onSearchChange,
   statusFilter, onStatusChange,
   teamFilter, onTeamFilterChange,
+  divisionFilter, onDivisionFilterChange,
 }: NavBarProps) {
   const router = useRouter()
 
@@ -58,7 +62,7 @@ export function NavBar({
     <header className="border-b bg-background px-5 py-3 flex items-center gap-3 shrink-0 flex-wrap min-h-[56px]">
 
       {/* Logo */}
-      <span className="font-semibold text-sm mr-1">SeatMap</span>
+      <span className="font-semibold text-sm mr-1">seatmap</span>
 
       {/* Search */}
       <div className="relative w-[300px]">
@@ -103,6 +107,24 @@ export function NavBar({
           </Combobox>
         </div>
       )}
+
+      {/* Division filter — Select */}
+      <Select
+        value={divisionFilter ?? '__all__'}
+        onValueChange={(v) => onDivisionFilterChange(v === '__all__' ? null : v)}
+      >
+        <SelectTrigger className="!h-9 text-sm w-[160px]">
+          <span className="flex flex-1 text-left text-sm">
+            {divisionFilter ?? 'All divisions'}
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All divisions</SelectItem>
+          {divisions.map((d) => (
+            <SelectItem key={d} value={d}>{d}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       {/* Status filter — Select */}
       <Select

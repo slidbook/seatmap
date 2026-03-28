@@ -16,6 +16,7 @@ export interface Seat {
   status: SeatStatus
   occupant_name: string | null
   occupant_team: string | null
+  occupant_division: string | null
   notes: string | null
   created_at: string
 }

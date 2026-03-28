@@ -30,6 +30,7 @@ export async function assignSeat(
   seatId: string,
   occupantName: string,
   occupantTeam: string,
+  occupantDivision: string,
   notes: string
 ) {
   const db = createAdminClient()
@@ -41,6 +42,7 @@ export async function assignSeat(
     status: 'OCCUPIED',
     occupant_name: occupantName,
     occupant_team: occupantTeam || null,
+    occupant_division: occupantDivision || null,
     notes: notes || null,
   }).eq('id', seatId)
   if (error) throw new Error(error.message)
@@ -62,6 +64,7 @@ export async function unassignSeat(seatId: string) {
     status: 'AVAILABLE',
     occupant_name: null,
     occupant_team: null,
+    occupant_division: null,
   }).eq('id', seatId)
   if (error) throw new Error(error.message)
 
@@ -97,6 +100,7 @@ export async function makeAvailable(seatId: string) {
     status: 'AVAILABLE',
     occupant_name: null,
     occupant_team: null,
+    occupant_division: null,
     notes: null,
   }).eq('id', seatId)
   if (error) throw new Error(error.message)
@@ -114,6 +118,7 @@ export async function updateSeat(
     label?: string
     occupant_name?: string
     occupant_team?: string | null
+    occupant_division?: string | null
     notes?: string | null
   }
 ) {
@@ -137,6 +142,21 @@ export async function updateSeat(
   }
 }
 
+export async function restoreSeat(seatId: string, snapshot: {
+  status: string
+  occupant_name: string | null
+  occupant_team: string | null
+  occupant_division: string | null
+  notes: string | null
+  label: string
+}) {
+  const db = createAdminClient()
+  const email = await getEditorEmail()
+  const { error } = await db.from('seats').update(snapshot).eq('id', seatId)
+  if (error) throw new Error(error.message)
+  await writeAudit(seatId, 'UNDO', email)
+}
+
 export async function moveSeat(fromSeatId: string, toSeatId: string) {
   const db = createAdminClient()
   const email = await getEditorEmail()
@@ -151,12 +171,14 @@ export async function moveSeat(fromSeatId: string, toSeatId: string) {
     await db.from('seats').update({
       occupant_name: toSeat.occupant_name,
       occupant_team: toSeat.occupant_team,
+      occupant_division: toSeat.occupant_division,
       status: 'OCCUPIED',
     }).eq('id', fromSeatId)
 
     await db.from('seats').update({
       occupant_name: fromSeat.occupant_name,
       occupant_team: fromSeat.occupant_team,
+      occupant_division: fromSeat.occupant_division,
       status: 'OCCUPIED',
     }).eq('id', toSeatId)
 
@@ -175,12 +197,14 @@ export async function moveSeat(fromSeatId: string, toSeatId: string) {
       status: 'AVAILABLE',
       occupant_name: null,
       occupant_team: null,
+      occupant_division: null,
     }).eq('id', fromSeatId)
 
     await db.from('seats').update({
       status: 'OCCUPIED',
       occupant_name: fromSeat.occupant_name,
       occupant_team: fromSeat.occupant_team,
+      occupant_division: fromSeat.occupant_division,
     }).eq('id', toSeatId)
 
     await writeAudit(fromSeatId, 'MOVE', email, {

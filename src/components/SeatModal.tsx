@@ -11,7 +11,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import type { Seat } from '@/types'
-import { assignSeat, unassignSeat, reserveSeat, makeAvailable, updateSeat } from '@/app/actions/seats'
+import { assignSeat, unassignSeat, reserveSeat, makeAvailable, updateSeat, restoreSeat } from '@/app/actions/seats'
+import { toast } from 'sonner'
+
+function toastTimestamp() {
+  return new Date().toLocaleString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: '2-digit',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
 
 type Mode = 'view' | 'edit'
 
@@ -46,11 +54,12 @@ function TeamCombobox({ value, onChange, teams }: {
 }
 
 // ── Assign form (used for AVAILABLE tab + RESERVED assign) ────────────────────
-function AssignForm({ name, onName, team, onTeam, notes, onNotes, teams, isPending, onSubmit }: {
+function AssignForm({ name, onName, team, onTeam, division, onDivision, notes, onNotes, teams, divisions, isPending, onSubmit }: {
   name: string; onName: (v: string) => void
   team: string; onTeam: (v: string) => void
+  division: string; onDivision: (v: string) => void
   notes: string; onNotes: (v: string) => void
-  teams: string[]; isPending: boolean; onSubmit: () => void
+  teams: string[]; divisions: string[]; isPending: boolean; onSubmit: () => void
 }) {
   return (
     <div className="grid gap-3 pt-3">
@@ -61,6 +70,10 @@ function AssignForm({ name, onName, team, onTeam, notes, onNotes, teams, isPendi
       <div className="grid gap-1.5">
         <Label>Team</Label>
         <TeamCombobox value={team} onChange={onTeam} teams={teams} />
+      </div>
+      <div className="grid gap-1.5">
+        <Label>Division</Label>
+        <TeamCombobox value={division} onChange={onDivision} teams={divisions} />
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="assign-notes">Notes</Label>
@@ -98,25 +111,48 @@ function ReserveForm({ notes, onNotes, team, onTeam, teams, isPending, onSubmit 
 
 // ── Main modal ─────────────────────────────────────────────────────────────────
 interface SeatModalProps {
-  seat: Seat | null; teams: string[]
+  seat: Seat | null; teams: string[]; divisions: string[]
   onClose: () => void; onUpdated: () => Promise<void>; onMoveStart: (seat: Seat) => void
 }
 
-export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: SeatModalProps) {
+export function SeatModal({ seat, teams, divisions, onClose, onUpdated, onMoveStart }: SeatModalProps) {
   const [mode, setMode] = useState<Mode>('view')
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const [name,  setName]  = useState('')
-  const [team,  setTeam]  = useState('')
-  const [notes, setNotes] = useState('')
-  const [label, setLabel] = useState('')
+  const [name,     setName]     = useState('')
+  const [team,     setTeam]     = useState('')
+  const [division, setDivision] = useState('')
+  const [notes,    setNotes]    = useState('')
+  const [label,    setLabel]    = useState('')
 
   const close = () => { setMode('view'); setError(null); onClose() }
 
-  const run = (fn: () => Promise<void>) => {
+  const run = (fn: () => Promise<void>, message: string) => {
+    const snapshot = {
+      status: seat!.status,
+      occupant_name: seat!.occupant_name,
+      occupant_team: seat!.occupant_team,
+      occupant_division: seat!.occupant_division,
+      notes: seat!.notes,
+      label: seat!.label,
+    }
     setError(null)
     startTransition(async () => {
-      try { await fn(); await onUpdated(); close() }
+      try {
+        await fn()
+        await onUpdated()
+        close()
+        toast(message, {
+          description: toastTimestamp(),
+          action: {
+            label: 'Undo',
+            onClick: async () => {
+              await restoreSeat(seat!.id, snapshot)
+              await onUpdated()
+            },
+          },
+        })
+      }
       catch (e) { setError(e instanceof Error ? e.message : 'Something went wrong') }
     })
   }
@@ -124,13 +160,14 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
   const enterEdit = () => {
     setName(seat?.occupant_name ?? '')
     setTeam(seat?.occupant_team ?? '')
+    setDivision(seat?.occupant_division ?? '')
     setNotes(seat?.notes ?? '')
     setLabel(seat?.label ?? '')
     setMode('edit')
   }
 
   const enterAssign = () => {
-    setName(''); setTeam(''); setNotes('')
+    setName(''); setTeam(''); setDivision(''); setNotes('')
     setMode('edit')
   }
 
@@ -158,15 +195,16 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
             <TabsContent value="assign" className="min-h-[268px]">
               <AssignForm
                 name={name} onName={setName} team={team} onTeam={setTeam}
-                notes={notes} onNotes={setNotes} teams={teams} isPending={isPending}
-                onSubmit={() => run(() => assignSeat(seat.id, name.trim(), team.trim(), notes.trim()))}
+                division={division} onDivision={setDivision}
+                notes={notes} onNotes={setNotes} teams={teams} divisions={divisions} isPending={isPending}
+                onSubmit={() => run(() => assignSeat(seat.id, name.trim(), team.trim(), division.trim(), notes.trim()), 'Seat has been assigned.')}
               />
             </TabsContent>
             <TabsContent value="reserve" className="min-h-[268px]">
               <ReserveForm
                 notes={notes} onNotes={setNotes} team={team} onTeam={setTeam}
                 teams={teams} isPending={isPending}
-                onSubmit={() => run(() => reserveSeat(seat.id, notes.trim()))}
+                onSubmit={() => run(() => reserveSeat(seat.id, notes.trim()), 'Seat has been reserved.')}
               />
             </TabsContent>
           </Tabs>
@@ -188,7 +226,7 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
               <Button size="lg" onClick={enterEdit}>Edit</Button>
               <Button size="lg" variant="outline" onClick={() => { close(); onMoveStart(seat) }}>Move</Button>
               <Button size="lg" variant="outline" disabled={isPending}
-                onClick={() => run(() => unassignSeat(seat.id))}>Unassign</Button>
+                onClick={() => run(() => unassignSeat(seat.id), 'Seat has been unassigned.')}>Unassign</Button>
             </DialogFooter>
           </>
         )}
@@ -210,6 +248,10 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
                 <TeamCombobox value={team} onChange={setTeam} teams={teams} />
               </div>
               <div className="grid gap-1.5">
+                <Label>Division</Label>
+                <TeamCombobox value={division} onChange={setDivision} teams={divisions} />
+              </div>
+              <div className="grid gap-1.5">
                 <Label htmlFor="edit-notes">Notes</Label>
                 <Input id="edit-notes" value={notes} onChange={e => setNotes(e.target.value)} />
               </div>
@@ -220,8 +262,9 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
                   label: label.trim() || undefined,
                   occupant_name: name.trim(),
                   occupant_team: team.trim() || null,
+                  occupant_division: division.trim() || null,
                   notes: notes.trim() || null,
-                }))}>
+                }), 'Seat has been updated.')}>
                 {isPending ? 'Saving…' : 'Save'}
               </Button>
               <Button size="lg" variant="ghost" onClick={() => setMode('view')}>Back</Button>
@@ -238,7 +281,7 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
             <DialogFooter>
               <Button size="lg" onClick={enterAssign}>Assign person</Button>
               <Button size="lg" variant="outline" disabled={isPending}
-                onClick={() => run(() => makeAvailable(seat.id))}>Make available</Button>
+                onClick={() => run(() => makeAvailable(seat.id), 'Seat has been made available.')}>Make available</Button>
             </DialogFooter>
           </>
         )}
@@ -248,8 +291,9 @@ export function SeatModal({ seat, teams, onClose, onUpdated, onMoveStart }: Seat
           <>
             <AssignForm
               name={name} onName={setName} team={team} onTeam={setTeam}
-              notes={notes} onNotes={setNotes} teams={teams} isPending={isPending}
-              onSubmit={() => run(() => assignSeat(seat.id, name.trim(), team.trim(), notes.trim()))}
+              division={division} onDivision={setDivision}
+              notes={notes} onNotes={setNotes} teams={teams} divisions={divisions} isPending={isPending}
+              onSubmit={() => run(() => assignSeat(seat.id, name.trim(), team.trim(), division.trim(), notes.trim()), 'Seat has been assigned.')}
             />
             <Button size="lg" variant="ghost" className="mt-1" onClick={() => setMode('view')}>Back</Button>
           </>

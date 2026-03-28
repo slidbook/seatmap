@@ -18,6 +18,7 @@ create table seats (
     check (status in ('AVAILABLE', 'OCCUPIED', 'RESERVED')),
   occupant_name text,
   occupant_team text,
+  occupant_division text,
   notes text,
   created_at timestamptz not null default now()
 );

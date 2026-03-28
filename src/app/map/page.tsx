@@ -12,10 +12,11 @@ export default async function MapPage() {
 
   const db = createAdminClient()
 
-  const [{ data: floor }, { data: seats }, { data: teamRows }] = await Promise.all([
+  const [{ data: floor }, { data: seats }, { data: teamRows }, { data: divisionRows }] = await Promise.all([
     db.from('floors').select('id, name, svg_content').single(),
     db.from('seats').select('*').order('label'),
     db.from('seats').select('occupant_team').not('occupant_team', 'is', null),
+    db.from('seats').select('occupant_division').not('occupant_division', 'is', null),
   ])
 
   if (!floor) {
@@ -26,7 +27,8 @@ export default async function MapPage() {
     )
   }
 
-  const teams = [...new Set((teamRows ?? []).map((r) => r.occupant_team as string))].sort()
+  const teams     = [...new Set((teamRows     ?? []).map((r) => r.occupant_team     as string))].sort()
+  const divisions = [...new Set((divisionRows ?? []).map((r) => r.occupant_division as string))].sort()
 
   return (
     <div className="flex flex-col h-full">
@@ -34,6 +36,7 @@ export default async function MapPage() {
         floor={floor}
         initialSeats={(seats ?? []) as Seat[]}
         teams={teams}
+        divisions={divisions}
         userEmail={user.email ?? ''}
       />
     </div>

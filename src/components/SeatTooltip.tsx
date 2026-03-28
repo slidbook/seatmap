@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import { useRef, useLayoutEffect, useState } from 'react'
 import type { Seat } from '@/types'
 import { STATUS_COLOURS } from './SeatMap'
 
@@ -15,17 +16,32 @@ interface SeatTooltipProps {
 }
 
 export function SeatTooltip({ seat, x, y }: SeatTooltipProps) {
-  const offset = 16
+  const ref = useRef<HTMLDivElement>(null)
+  const offset = 12
+  const [pos, setPos] = useState({ left: x + offset, top: y + offset })
+
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const { offsetWidth: w, offsetHeight: h } = ref.current
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    setPos({
+      left: x + offset + w > vw ? x - offset - w : x + offset,
+      top:  y + offset + h > vh ? y - offset - h : y + offset,
+    })
+  }, [x, y])
+
   const style: React.CSSProperties = {
     position: 'fixed',
-    top: y + offset,
-    left: x + offset,
+    top: pos.top,
+    left: pos.left,
     zIndex: 9999,
     pointerEvents: 'none',
   }
 
   const content = (
     <div
+      ref={ref}
       style={style}
       className="bg-popover text-popover-foreground border rounded-lg shadow-md p-3 text-sm min-w-40 max-w-64"
     >

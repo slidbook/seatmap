@@ -5,18 +5,11 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Field,
   FieldGroup,
   FieldLabel,
-  FieldDescription,
   FieldError,
 } from '@/components/ui/field'
 import { cn } from '@/lib/utils'
@@ -74,8 +67,8 @@ function LoginPageInner() {
   }
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
+    <div className="flex min-h-svh flex-col items-center justify-center bg-muted p-6 md:p-10">
+      <div className="w-full max-w-sm md:max-w-3xl">
         {submitted ? (
           <CheckEmailCard email={email} />
         ) : (
@@ -109,16 +102,16 @@ function LoginCard({
 }) {
   return (
     <div className={cn('flex flex-col gap-6', className)}>
-      <Card>
-        <CardHeader>
-          <CardTitle>Sign in to SeatMap</CardTitle>
-          <CardDescription>
-            Enter your work email and we&apos;ll send you a magic link.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit}>
+      <Card className="overflow-hidden p-0">
+        <CardContent className="grid p-0 md:grid-cols-2">
+          <form className="p-6 md:p-8" onSubmit={onSubmit}>
             <FieldGroup>
+              <div className="flex flex-col gap-2 mb-2">
+                <h1 className="text-2xl font-bold">Welcome back</h1>
+                <p className="text-muted-foreground text-sm">
+                  Enter your work email and we&apos;ll send you a magic link.
+                </p>
+              </div>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -139,6 +132,9 @@ function LoginCard({
               </Field>
             </FieldGroup>
           </form>
+          <div className="relative hidden md:flex items-center justify-center bg-zinc-900">
+            <span className="text-white font-semibold text-xl tracking-tight">seatmap</span>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -148,17 +144,22 @@ function LoginCard({
 function CheckEmailCard({ email, className }: { email: string; className?: string }) {
   return (
     <div className={cn('flex flex-col gap-6', className)}>
-      <Card>
-        <CardHeader>
-          <CardTitle>Check your email</CardTitle>
-          <CardDescription>
-            We sent a login link to <strong>{email}</strong>. Click it to sign in.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldDescription>
-            Didn&apos;t get it? Check your spam folder, or go back and try again.
-          </FieldDescription>
+      <Card className="overflow-hidden p-0">
+        <CardContent className="grid p-0 md:grid-cols-2">
+          <div className="p-6 md:p-8">
+            <div className="flex flex-col gap-2 mb-4">
+              <h1 className="text-2xl font-bold">Check your email</h1>
+              <p className="text-muted-foreground text-sm">
+                We sent a login link to <strong>{email}</strong>. Click it to sign in.
+              </p>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              Didn&apos;t get it? Check your spam folder, or go back and try again.
+            </p>
+          </div>
+          <div className="relative hidden md:flex items-center justify-center bg-zinc-900">
+            <span className="text-white font-semibold text-xl tracking-tight">seatmap</span>
+          </div>
         </CardContent>
       </Card>
     </div>
