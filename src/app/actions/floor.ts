@@ -4,6 +4,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { parseSvg } from '@/lib/svg-parser'
 
+async function getEditorEmail(): Promise<string> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.email ?? 'unknown'
+}
+
 export interface UploadResult {
   kept:       number
   added:      number
@@ -120,7 +126,8 @@ export async function listSnapshots(): Promise<Snapshot[]> {
 
 // ── Restore a snapshot ────────────────────────────────────────────────────────
 export async function restoreSnapshot(snapshotId: string): Promise<void> {
-  await requireAuth()
+  const user = await requireAuth()
+  const email = user.email ?? 'unknown'
   const db = createAdminClient()
 
   // Load the target snapshot
@@ -132,8 +139,24 @@ export async function restoreSnapshot(snapshotId: string): Promise<void> {
 
   if (snapErr || !snap) throw new Error('Snapshot not found')
 
-  const seats = snap.seat_data as Array<Record<string, unknown>>
-  if (!Array.isArray(seats)) throw new Error('Snapshot seat data is invalid')
+  const restoredSeats = snap.seat_data as Array<Record<string, unknown>>
+  if (!Array.isArray(restoredSeats)) throw new Error('Snapshot seat data is invalid')
+
+  // Load current live seats + SVG before overwriting (for snapshot + audit diff)
+  const [{ data: currentFloor }, { data: currentSeats }] = await Promise.all([
+    db.from('floors').select('svg_content').eq('id', snap.floor_id).single(),
+    db.from('seats').select('*').eq('floor_id', snap.floor_id),
+  ])
+
+  // Save snapshot of current state before restoring
+  if (currentFloor && currentSeats) {
+    const { error: preSnapErr } = await db.from('floor_snapshots').insert({
+      floor_id:    snap.floor_id,
+      svg_content: currentFloor.svg_content,
+      seat_data:   currentSeats,
+    })
+    if (preSnapErr) throw new Error('Failed to save pre-restore snapshot: ' + preSnapErr.message)
+  }
 
   // Restore the SVG
   const { error: floorErr } = await db
@@ -147,11 +170,40 @@ export async function restoreSnapshot(snapshotId: string): Promise<void> {
   const { error: deleteErr } = await db.from('seats').delete().eq('floor_id', snap.floor_id)
   if (deleteErr) throw new Error('Failed to clear seats: ' + deleteErr.message)
 
-  if (seats.length > 0) {
+  if (restoredSeats.length > 0) {
     const batchSize = 100
-    for (let i = 0; i < seats.length; i += batchSize) {
-      const { error: insertErr } = await db.from('seats').insert(seats.slice(i, i + batchSize))
+    for (let i = 0; i < restoredSeats.length; i += batchSize) {
+      const { error: insertErr } = await db.from('seats').insert(restoredSeats.slice(i, i + batchSize))
       if (insertErr) throw new Error('Failed to restore seats: ' + insertErr.message)
+    }
+  }
+
+  // Write audit entries — one per seat that changed
+  const currentMap = new Map((currentSeats ?? []).map((s) => [s.id as string, s]))
+  const auditRows: Record<string, unknown>[] = []
+
+  for (const seat of restoredSeats) {
+    const seatId = seat.id as string
+    const current = currentMap.get(seatId)
+    const oldSummary = current
+      ? `${current.label} — ${current.occupant_name ?? 'empty'} (${current.status})`
+      : null
+    const newSummary = `${seat.label} — ${(seat.occupant_name as string | null) ?? 'empty'} (${seat.status})`
+    if (oldSummary === newSummary) continue
+    auditRows.push({
+      seat_id:      seatId,
+      editor_email: email,
+      action:       'RESTORE',
+      field:        'snapshot',
+      old_value:    oldSummary,
+      new_value:    newSummary,
+    })
+  }
+
+  if (auditRows.length > 0) {
+    const batchSize = 100
+    for (let i = 0; i < auditRows.length; i += batchSize) {
+      await db.from('audit_logs').insert(auditRows.slice(i, i + batchSize))
     }
   }
 }

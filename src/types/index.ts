@@ -1,6 +1,6 @@
 export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED'
 
-export type AuditAction = 'ASSIGN' | 'UNASSIGN' | 'MOVE' | 'RESERVE' | 'UPDATE'
+export type AuditAction = 'ASSIGN' | 'UNASSIGN' | 'MOVE' | 'RESERVE' | 'UPDATE' | 'PUBLISH' | 'RESTORE'
 
 export interface Floor {
   id: string

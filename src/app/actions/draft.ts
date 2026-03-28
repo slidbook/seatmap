@@ -59,18 +59,20 @@ export async function initializeDraft(floorId: string): Promise<void> {
 }
 
 export async function publishDraft(floorId: string): Promise<void> {
-  await requireAdmin()
+  const email = await requireAdmin()
   const db = createAdminClient()
 
-  // Snapshot current live seats + SVG before overwriting
-  const [{ data: floor }, { data: liveSeats }] = await Promise.all([
+  // Load live seats + SVG + draft seats before publishing
+  const [{ data: floor }, { data: liveSeats }, { data: draftSeats }] = await Promise.all([
     db.from('floors').select('svg_content').eq('id', floorId).single(),
     db.from('seats').select('*').eq('floor_id', floorId),
+    db.from('seat_drafts').select('*').eq('floor_id', floorId),
   ])
 
   if (!floor) throw new Error('Floor not found.')
   if (!liveSeats) throw new Error('Failed to load live seats.')
 
+  // Snapshot current live state before overwriting
   const { error: snapError } = await db.from('floor_snapshots').insert({
     floor_id:    floorId,
     svg_content: floor.svg_content,
@@ -78,8 +80,41 @@ export async function publishDraft(floorId: string): Promise<void> {
   })
   if (snapError) throw new Error('Failed to save snapshot before publishing: ' + snapError.message)
 
+  // Publish draft → live
   const { error } = await db.rpc('publish_seat_draft', { p_floor_id: floorId })
   if (error) throw new Error(error.message)
+
+  // Write audit entries for each seat that changed
+  const liveMap = new Map(liveSeats.map((s) => [s.id as string, s]))
+  const auditRows: Record<string, unknown>[] = []
+  const fields = ['status', 'occupant_name', 'occupant_team', 'occupant_division', 'notes', 'label'] as const
+
+  for (const draft of (draftSeats ?? [])) {
+    const live = liveMap.get(draft.seat_id as string)
+    const changedFields = fields.filter((f) => (draft[f] ?? null) !== ((live?.[f]) ?? null))
+    if (changedFields.length === 0) continue
+
+    const oldSummary = live
+      ? `${live.label} — ${live.occupant_name ?? 'empty'} (${live.status})`
+      : null
+    const newSummary = `${draft.label} — ${(draft.occupant_name as string | null) ?? 'empty'} (${draft.status})`
+
+    auditRows.push({
+      seat_id:      draft.seat_id,
+      editor_email: email,
+      action:       'PUBLISH',
+      field:        `${changedFields.length} field${changedFields.length > 1 ? 's' : ''} changed`,
+      old_value:    oldSummary,
+      new_value:    newSummary,
+    })
+  }
+
+  if (auditRows.length > 0) {
+    const batchSize = 100
+    for (let i = 0; i < auditRows.length; i += batchSize) {
+      await db.from('audit_logs').insert(auditRows.slice(i, i + batchSize))
+    }
+  }
 }
 
 export async function discardDraft(floorId: string): Promise<void> {
